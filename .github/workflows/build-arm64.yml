@@ -24,8 +24,7 @@ pkg-config \ cmake make
         run: |
           unzip base-2.0.0.zip
           mv base-2.0.0 redeclipse
-
-      - name: Build
+  - name: Build
         run: |
           cd redeclipse/src
           make \
