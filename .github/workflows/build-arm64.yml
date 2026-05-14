@@ -14,23 +14,31 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt install -y unzip build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libsdl2-dev \
-libsdl2-image-dev \
-libsdl2-mixer-dev \
-libgl1-mesa-dev \
-pkg-config \ cmake make
+          sudo apt install -y \
+            unzip \
+            build-essential \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            libsdl2-dev \
+            libsdl2-image-dev \
+            libsdl2-mixer-dev \
+            libgl1-mesa-dev \
+            pkg-config \
+            cmake \
+            make
 
       - name: Extract Source
         run: |
           unzip base-2.0.0.zip
           mv base-2.0.0 redeclipse
-  - name: Build
+
+      - name: Build
         run: |
           cd redeclipse/src
           make \
-CXX=aarch64-linux-gnu-g++ \
-CC=aarch64-linux-gnu-gcc \
-CLIENT_INCLUDES="-I/usr/include/SDL2 -D_REENTRANT"
+            CXX=aarch64-linux-gnu-g++ \
+            CC=aarch64-linux-gnu-gcc \
+            CLIENT_INCLUDES="-I/usr/include/SDL2 -D_REENTRANT"
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
