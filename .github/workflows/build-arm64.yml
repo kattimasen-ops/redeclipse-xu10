@@ -1,0 +1,33 @@
+name: Build ARM64 Red Eclipse
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y unzip build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libsdl2-dev libsdl2-image-dev cmake make
+
+      - name: Extract Source
+        run: |
+          unzip base-2.0.0.zip
+          mv base-2.0.0 redeclipse
+
+      - name: Build
+        run: |
+          cd redeclipse/src
+          make CXX=aarch64-linux-gnu-g++ CC=aarch64-linux-gnu-gcc
+
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: redeclipse-arm64
+          path: redeclipse/src/redeclipse*
