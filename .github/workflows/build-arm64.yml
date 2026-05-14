@@ -11,25 +11,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Enable ARM64 architecture
+      - name: Install Cross Toolchain (NO multiarch!)
         run: |
-          sudo dpkg --add-architecture arm64
-          sudo apt-get update
-
-      - name: Install Dependencies
-        run: |
-          sudo apt-get install -y \
+          sudo apt update
+          sudo apt install -y \
             unzip \
             build-essential \
             make \
             pkg-config \
-            cmake \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu \
-            libgl1-mesa-dev:arm64 \
-            libsdl2-dev:arm64 \
-            libsdl2-image-dev:arm64 \
-            libsdl2-mixer-dev:arm64
+            libc6-dev-arm64-cross \
+            libgl1-mesa-dev \
+            libsdl2-dev \
+            libsdl2-image-dev \
+            libsdl2-mixer-dev
 
       - name: Extract Source
         run: |
@@ -40,12 +36,14 @@ jobs:
         run: |
           cd redeclipse/src
 
+          export CC=aarch64-linux-gnu-gcc
+          export CXX=aarch64-linux-gnu-g++
+
           make \
-            CC=aarch64-linux-gnu-gcc \
-            CXX=aarch64-linux-gnu-g++ \
+            CC=$CC \
+            CXX=$CXX \
             AR=aarch64-linux-gnu-ar \
             RANLIB=aarch64-linux-gnu-ranlib \
-            PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
             CLIENT_INCLUDES="-I/usr/include/SDL2 -D_REENTRANT -DSDL_DISABLE_IMMINTRIN_H"
 
       - name: Upload Binary
