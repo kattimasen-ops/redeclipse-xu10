@@ -20,6 +20,7 @@ jobs:
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu \
             libsdl2-dev \
+            libsdl2-2.0-0 \
             libsdl2-image-dev \
             libsdl2-mixer-dev \
             libgl1-mesa-dev \
@@ -38,7 +39,7 @@ jobs:
           make \
             CXX=aarch64-linux-gnu-g++ \
             CC=aarch64-linux-gnu-gcc \
-            CLIENT_INCLUDES="-I/usr/include/SDL2 -D_REENTRANT"
+            CLIENT_INCLUDES="-I/usr/include/SDL2 -D_REENTRANT -DSDL_DISABLE_IMMINTRIN_H"
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
