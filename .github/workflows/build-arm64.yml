@@ -46,7 +46,7 @@ jobs:
       - name: Build ENet
         run: |
           cd src/
-          Makefile
+Makefile
           make -C enet CC=aarch64-linux-gnu-gcc
 
       - name: Build Redeclipse (ARM64)
