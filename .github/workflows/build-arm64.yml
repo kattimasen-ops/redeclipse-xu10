@@ -234,6 +234,19 @@ jobs:
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
+              - name: Locate binaries
+        run: |
+          echo "=== BINARIES ==="
+          find extracted -type f | grep -Ei "redeclipse|server|linux|arm"
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: redeclipse-xu10-arm64
+          path: |
+            extracted/**/*.so
+            extracted/**/redeclipse*
+            extracted/**/server*
         with:
           name: build-output
           path: |
