@@ -11,18 +11,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install host dependencies
         run: |
-          sudo dpkg --add-architecture arm64
           sudo apt update
 
           sudo apt install -y \
             unzip \
+            git \
             cmake \
+            make \
             build-essential \
+            pkg-config \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu \
-            pkg-config \
             libgl1-mesa-dev \
             libglu1-mesa-dev \
             libx11-dev \
@@ -34,14 +35,16 @@ jobs:
             libxxf86vm-dev \
             libasound2-dev
 
-      - name: Extract source zip
+      - name: Extract source archive
         run: |
+          mkdir extracted
+
           unzip -o base-2.0.0.zip -d extracted
 
-          echo "==== FILE TREE ===="
-          find extracted | head -100
+          echo "==== EXTRACTED FILES ===="
+          find extracted | head -200
 
-      - name: Locate src directory
+      - name: Find src directory
         run: |
           SRC_DIR=$(find extracted -type d -name src | head -n 1)
 
@@ -52,17 +55,19 @@ jobs:
 
           echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
 
-          echo "FOUND SRC:"
+          echo "FOUND SRC DIR:"
           echo "$SRC_DIR"
 
       - name: Build ENet
         run: |
           cd "$SRC_DIR"
+
           make -C enet
 
       - name: Build SDL2 locally
         run: |
-          git clone --depth 1 --branch release-2.30.2 https://github.com/libsdl-org/SDL.git
+          git clone --depth 1 --branch release-2.30.2 \
+            https://github.com/libsdl-org/SDL.git
 
           cd SDL
 
@@ -73,31 +78,30 @@ jobs:
           CXX=aarch64-linux-gnu-g++ \
           cmake .. \
             -DSDL_STATIC=ON \
-            -DSDL_SHARED=OFF \
-            -DCMAKE_INSTALL_PREFIX=/usr/aarch64-linux-gnu
+            -DSDL_SHARED=OFF
 
           make -j$(nproc)
-
-          sudo make install
 
       - name: Build Game
         run: |
           cd "$SRC_DIR"
 
-          export CXX=aarch64-linux-gnu-g++
           export CC=aarch64-linux-gnu-gcc
+          export CXX=aarch64-linux-gnu-g++
+
+          export CFLAGS="-I$GITHUB_WORKSPACE/SDL/include"
+          export CXXFLAGS="-I$GITHUB_WORKSPACE/SDL/include"
 
           make clean
 
           make \
             PLATFORM=linux \
-            CXX=aarch64-linux-gnu-g++ \
             CC=aarch64-linux-gnu-gcc \
-            CFLAGS="-I/usr/aarch64-linux-gnu/include/SDL2" \
-            CXXFLAGS="-I/usr/aarch64-linux-gnu/include/SDL2" \
-            LDFLAGS="-L/usr/aarch64-linux-gnu/lib"
+            CXX=aarch64-linux-gnu-g++ \
+            CLIENT=1 \
+            SERVER=1
 
-      - name: Upload binary
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: redeclipse-arm64
