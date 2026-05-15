@@ -8,11 +8,15 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+      ########################################################
+      # CHECKOUT
+      ########################################################
+
       - name: Checkout
         uses: actions/checkout@v4
 
       ########################################################
-      # CLEAN UBUNTU SOURCES
+      # FIX UBUNTU MIRRORS
       ########################################################
 
       - name: Fix Ubuntu mirrors
@@ -21,7 +25,7 @@ jobs:
           sudo sed -i 's|http://security.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
 
       ########################################################
-      # INSTALL TOOLCHAIN
+      # INSTALL DEPENDENCIES
       ########################################################
 
       - name: Install packages
@@ -32,22 +36,22 @@ jobs:
             build-essential \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu \
-            pkg-config \
-            autoconf \
-            automake \
-            libtool \
             make \
             cmake \
+            git \
             unzip \
             zip \
             wget \
-            git \
+            autoconf \
+            automake \
+            libtool \
+            pkg-config \
             libx11-dev \
             libgl1-mesa-dev \
             zlib1g-dev
 
       ########################################################
-      # EXTRACT SOURCE
+      # EXTRACT ZIP
       ########################################################
 
       - name: Extract source
@@ -57,33 +61,43 @@ jobs:
           ZIPFILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
 
           if [ -z "$ZIPFILE" ]; then
-            echo "ZIP NOT FOUND"
+            echo "ZIP FILE NOT FOUND"
             exit 1
           fi
 
           unzip "$ZIPFILE" -d extracted
 
-          echo "FILES:"
+          echo "Extracted files:"
           find extracted | head -100
 
       ########################################################
       # FIND SRC
       ########################################################
 
-      - name: Find src
+      - name: Find src directory
         run: |
           SRC_DIR=$(find extracted -type d -name src | head -n 1)
 
           if [ -z "$SRC_DIR" ]; then
-            echo "SRC NOT FOUND"
+            echo "SRC DIRECTORY NOT FOUND"
             find extracted
             exit 1
           fi
 
           echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
 
-          echo "FOUND:"
+          echo "Using SRC_DIR:"
           echo "$SRC_DIR"
+
+      ########################################################
+      # DOWNLOAD SDL2
+      ########################################################
+
+      - name: Download SDL2
+        run: |
+          wget https://github.com/libsdl-org/SDL/releases/download/release-2.30.2/SDL2-2.30.2.tar.gz
+
+          tar -xzf SDL2-2.30.2.tar.gz
 
       ########################################################
       # BUILD SDL2
@@ -91,9 +105,7 @@ jobs:
 
       - name: Build SDL2
         run: |
-          git clone https://github.com/libsdl-org/SDL.git SDL
-
-          cd SDL
+          cd SDL2-2.30.2
 
           mkdir build
           cd build
@@ -106,20 +118,23 @@ jobs:
             -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
             -DSDL_STATIC=ON \
             -DSDL_SHARED=OFF \
-            -DCMAKE_INSTALL_PREFIX=$HOME/sdl-install
+            -DSDL_X11=OFF \
+            -DSDL_WAYLAND=OFF \
+            -DCMAKE_INSTALL_PREFIX=$HOME/sdl2-install
 
           make -j$(nproc)
           make install
 
       ########################################################
-      # EXPORT PKG-CONFIG
+      # EXPORT SDL2 PKGCONFIG
       ########################################################
 
-      - name: Export SDL pkg-config
+      - name: Export SDL2 pkg-config
         run: |
-          echo "PKG_CONFIG_PATH=$HOME/sdl-install/lib/pkgconfig" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$HOME/sdl2-install/lib/pkgconfig" >> $GITHUB_ENV
 
-          pkg-config --list-all | grep SDL || true
+          echo "SDL2 pkg-config files:"
+          ls $HOME/sdl2-install/lib/pkgconfig || true
 
       ########################################################
       # BUILD ENET
@@ -145,16 +160,19 @@ jobs:
 
           make clean || true
 
+          export PKG_CONFIG_PATH=$HOME/sdl2-install/lib/pkgconfig
+
           make \
             CC=aarch64-linux-gnu-gcc \
             CXX=aarch64-linux-gnu-g++ \
+            SDL2_CONFIG=$HOME/sdl2-install/bin/sdl2-config \
             -j$(nproc)
 
       ########################################################
-      # ARTIFACTS
+      # UPLOAD
       ########################################################
 
-      - name: Upload binaries
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-output
