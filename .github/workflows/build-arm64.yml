@@ -1,124 +1,67 @@
-name: Build ARM64 Red Eclipse (SDL2 Self-Build)
+name: Redeclipse ARM64 Build (Stable)
 
 on:
-  workflow_dispatch:
   push:
-    tags:
-      - "v*"
+  pull_request:
 
 jobs:
-  build:
-    runs-on: ubuntu-22.04
+  build-arm64:
+    runs-on: ubuntu-24.04
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install build tools
+      - name: Update system
         run: |
-          sudo apt update
-          sudo apt install -y \
+          sudo apt-get update
+
+      - name: Install build dependencies (SDL2 ONLY)
+        run: |
+          sudo apt-get install -y \
             build-essential \
-            make \
-            cmake \
-            git \
-            wget \
-            unzip \
-            zip \
-            pkg-config \
+            g++ \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu \
-            libgl1-mesa-dev
+            make \
+            pkg-config \
+            libsdl2-dev \
+            libsdl2-image-dev \
+            libsdl2-mixer-dev \
+            libsdl2-ttf-dev \
+            libgl1-mesa-dev \
+            libx11-dev \
+            libxext-dev \
+            libxi-dev \
+            libxrandr-dev \
+            libasound2-dev \
+            libpulse-dev \
+            libudev-dev
 
-      # -----------------------------
-      # SDL2 BUILD (SELF-CONTAINED)
-      # -----------------------------
-      - name: Build SDL2 (ARM64 sysroot)
+      - name: Verify SDL2 install
         run: |
-          mkdir -p deps
-          cd deps
+          pkg-config --modversion sdl2 || true
+          ls /usr/include/SDL2 || true
 
-          git clone https://github.com/libsdl-org/SDL.git
-          cd SDL
-
-          mkdir build && cd build
-
-          cmake .. \
-            -DCMAKE_SYSTEM_NAME=Linux \
-            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
-            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
-            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
-            -DCMAKE_INSTALL_PREFIX=$GITHUB_WORKSPACE/deps/sdl2-install
-
-          make -j$(nproc)
-          make install
-
-      # -----------------------------
-      # OPTIONAL: SDL IMAGE / MIXER
-      # (nur wenn dein Build sie wirklich braucht)
-      # -----------------------------
-
-      - name: Extract source
-        run: |
-          unzip base-2.0.0.zip
-          mv base-2.0.0 redeclipse
-
-      # -----------------------------
-      # BUILD GAME
-      # -----------------------------
-      - name: Build Red Eclipse
+      - name: Build ENet
         run: |
           cd redeclipse/src
+          make -C enet CC=aarch64-linux-gnu-gcc
 
-          export CC=aarch64-linux-gnu-gcc
-          export CXX=aarch64-linux-gnu-g++
-
-          export SDL_PREFIX=$GITHUB_WORKSPACE/deps/sdl2-install
-
-          export CFLAGS="-I$SDL_PREFIX/include"
-          export CXXFLAGS="$CFLAGS"
-          export LDFLAGS="-L$SDL_PREFIX/lib"
-
-          make \
-            CC=$CC \
-            CXX=$CXX \
-            AR=aarch64-linux-gnu-ar \
-            RANLIB=aarch64-linux-gnu-ranlib \
-            CLIENT_INCLUDES="-I$SDL_PREFIX/include -D_REENTRANT -DSDL_DISABLE_IMMINTRIN_H" \
-            LDFLAGS="$LDFLAGS"
-
-      # -----------------------------
-      # PACKAGE
-      # -----------------------------
-      - name: Package
+      - name: Build Redeclipse (ARM64)
         run: |
-          mkdir -p release
-          cp redeclipse/src/redeclipse* release/ || true
-          zip -r redeclipse-arm64.zip release
+          cd redeclipse/src
+          make \
+            CC=aarch64-linux-gnu-gcc \
+            CXX=aarch64-linux-gnu-g++ \
+            AR=aarch64-linux-gnu-ar \
+            -j$(nproc)
 
-      # -----------------------------
-      # ARTIFACT
-      # -----------------------------
-      - name: Upload artifact
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: redeclipse-arm64
-          path: redeclipse-arm64.zip
-
-  release:
-    needs: build
-    runs-on: ubuntu-22.04
-    if: startsWith(github.ref, 'refs/tags/v')
-
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: redeclipse-arm64
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: redeclipse-arm64.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          path: |
+            redeclipse/src/*.bin
+            redeclipse/src/*.exe
+            redeclipse/src/*/release/*
