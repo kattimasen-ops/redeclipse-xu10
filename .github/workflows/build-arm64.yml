@@ -1,8 +1,9 @@
-name: Redeclipse ARM64 Build (Stable)
+name: Hauch ARM64 Stable Build
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build-arm64:
@@ -12,19 +13,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Update system
+      - name: Show repository structure
+        run: |
+          echo "=== ROOT ==="
+          pwd
+          ls -la
+
+          echo "=== DIRECTORY TREE ==="
+          find . -maxdepth 3 -type d
+
+      - name: Install dependencies
         run: |
           sudo apt-get update
 
-      - name: Install build dependencies (SDL2 ONLY)
-        run: |
           sudo apt-get install -y \
             build-essential \
-            g++ \
-            gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu \
             make \
             pkg-config \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
             libsdl2-dev \
             libsdl2-image-dev \
             libsdl2-mixer-dev \
@@ -38,30 +45,69 @@ jobs:
             libpulse-dev \
             libudev-dev
 
-      - name: Verify SDL2 install
+      - name: Verify SDL2
         run: |
-          pkg-config --modversion sdl2 || true
-          ls /usr/include/SDL2 || true
+          echo "=== SDL2 VERSION ==="
+          pkg-config --modversion sdl2
+
+          echo "=== SDL2 INCLUDE ==="
+          ls /usr/include/SDL2
+
+      - name: Detect source directory
+        run: |
+          SRC_DIR=$(find . -type d -name src | head -n 1)
+
+          if [ -z "$SRC_DIR" ]; then
+            echo "ERROR: src directory not found!"
+            exit 1
+          fi
+
+          echo "FOUND SRC DIR: $SRC_DIR"
+
+          echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
+
+      - name: Verify ENet exists
+        run: |
+          echo "=== CHECKING ENET ==="
+
+          if [ ! -d "$SRC_DIR/enet" ]; then
+            echo "ERROR: enet directory missing!"
+            echo "Contents of SRC_DIR:"
+            ls -la "$SRC_DIR"
+            exit 1
+          fi
+
+          echo "ENET FOUND"
 
       - name: Build ENet
         run: |
-          cd base-2.0.0/src
-          make -C enet CC=aarch64-linux-gnu-gcc
+          cd "$SRC_DIR"
 
-      - name: Build Redeclipse (ARM64)
+          make -C enet \
+            CC=aarch64-linux-gnu-gcc
+
+      - name: Build Hauch ARM64
         run: |
-          cd base-2.0.0/src/Makefile
+          cd "$SRC_DIR"
+
           make \
             CC=aarch64-linux-gnu-gcc \
             CXX=aarch64-linux-gnu-g++ \
             AR=aarch64-linux-gnu-ar \
+            CFLAGS="-I/usr/include/SDL2 -D_REENTRANT" \
+            CXXFLAGS="-I/usr/include/SDL2 -D_REENTRANT" \
             -j$(nproc)
 
-      - name: Upload build artifacts
+      - name: Show build results
+        run: |
+          echo "=== BUILD OUTPUT ==="
+          find . -type f | grep -E "\.(bin|exe|so)$" || true
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: redeclipse-arm64
+          name: hauch-arm64-build
           path: |
-            redeclipse/src/*.bin
-            redeclipse/src/*.exe
-            redeclipse/src/*/release/*
+            **/*.bin
+            **/*.exe
+            **/*.so
