@@ -2,7 +2,7 @@
       # BUILD ENGINE
       ########################################################
 
-      - name: Build Engine
+        name: Build Engine
         run: |
           cd "$SRC_DIR"
 
