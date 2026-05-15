@@ -8,110 +8,199 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Find ZIP
-        id: findzip
+      ######################################################################
+      # INSTALLATION
+      ######################################################################
+
+      - name: Install Build Dependencies
         run: |
-          ZIP_FILE=$(find . -maxdepth 2 -iname "*.zip" | head -n 1)
+          sudo apt-get update
+
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            cmake \
+            make \
+            zip \
+            unzip \
+            pkg-config \
+            git \
+            wget \
+            curl \
+            python3 \
+            openjdk-17-jdk \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            libsdl2-dev \
+            libsdl2-image-dev \
+            libsdl2-mixer-dev \
+            libgl1-mesa-dev \
+            libx11-dev \
+            zlib1g-dev
+
+      ######################################################################
+      # FIND AND EXTRACT SOURCE ZIP
+      ######################################################################
+
+      - name: Extract Source Archive
+        run: |
+          set -e
+
+          mkdir extracted
+
+          ZIP_FILE=$(find . -maxdepth 2 \( -iname "*.zip" -o -iname "*.7z" \) | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "No ZIP file found!"
+            echo "ERROR: No ZIP archive found!"
             exit 1
           fi
 
-          echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_ENV
-          echo "Using ZIP: $ZIP_FILE"
-
-      - name: Extract ZIP
-        run: |
-          rm -rf extracted
-          mkdir extracted
+          echo "Found archive:"
+          echo "$ZIP_FILE"
 
           unzip -o "$ZIP_FILE" -d extracted
 
-          echo "==== Extracted folders ===="
-          find extracted -type d
+          echo "Extraction complete"
 
-      - name: Locate src directory
+          echo "Folder structure:"
+          find extracted -maxdepth 4 -type d
+
+      ######################################################################
+      # FIND REAL SRC DIRECTORY
+      ######################################################################
+
+      - name: Locate Source Directory
         run: |
+          set -e
+
           SRC_DIR=$(find extracted -type d -name src | head -n 1)
 
           if [ -z "$SRC_DIR" ]; then
             echo "ERROR: src directory not found!"
-            echo "Folders:"
+            echo "Detected folders:"
             find extracted -type d
             exit 1
           fi
 
           echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
 
-          echo "Found src:"
+          echo "Detected src folder:"
           echo "$SRC_DIR"
 
-      - name: Install dependencies
-        run: |
-          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://ports.ubuntu.com/ubuntu-ports|g' /etc/apt/sources.list
-          sudo sed -i 's|http://security.ubuntu.com/ubuntu|http://ports.ubuntu.com/ubuntu-ports|g' /etc/apt/sources.list
-
-          sudo dpkg --add-architecture arm64
-          sudo apt update
-
-          sudo apt install -y \
-            build-essential \
-            gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu \
-            pkg-config \
-            make \
-            unzip \
-            zip \
-            libx11-dev:arm64 \
-            libgl1-mesa-dev:arm64 \
-            zlib1g-dev:arm64 \
-            libsdl2-dev:arm64 \
-            libsdl2-image-dev:arm64 \
-            libsdl2-mixer-dev:arm64
-
-      - name: Verify SDL2 pkg-config
-        run: |
-          export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
-
-          pkg-config --modversion sdl2
-          pkg-config --modversion SDL2_image
-          pkg-config --modversion SDL2_mixer
+      ######################################################################
+      # BUILD ENET
+      ######################################################################
 
       - name: Build ENet
         run: |
+          set -e
+
           cd "$SRC_DIR"
 
-          make -C enet clean
+          if [ ! -d "enet" ]; then
+            echo "ERROR: enet folder missing!"
+            exit 1
+          fi
+
+          make -C enet clean || true
 
           make -C enet \
-            CC=aarch64-linux-gnu-gcc
+            CC=aarch64-linux-gnu-gcc \
+            AR=aarch64-linux-gnu-ar
+
+      ######################################################################
+      # FIX SDL2 PKG-CONFIG
+      ######################################################################
+
+      - name: Setup SDL2 pkg-config aliases
+        run: |
+          set -e
+
+          mkdir -p fake-pkgconfig
+
+          cat > fake-pkgconfig/sdl2.pc <<EOF
+          prefix=/usr
+          exec_prefix=\${prefix}
+          libdir=\${exec_prefix}/lib
+          includedir=\${prefix}/include/SDL2
+
+          Name: sdl2
+          Description: SDL2
+          Version: 2.0
+          Cflags: -I\${includedir}
+          Libs: -lSDL2
+          EOF
+
+          cat > fake-pkgconfig/SDL2_image.pc <<EOF
+          prefix=/usr
+          exec_prefix=\${prefix}
+          libdir=\${exec_prefix}/lib
+          includedir=\${prefix}/include/SDL2
+
+          Name: SDL2_image
+          Description: SDL2_image
+          Version: 2.0
+          Cflags: -I\${includedir}
+          Libs: -lSDL2_image
+          EOF
+
+          cat > fake-pkgconfig/SDL2_mixer.pc <<EOF
+          prefix=/usr
+          exec_prefix=\${prefix}
+          libdir=\${exec_prefix}/lib
+          includedir=\${prefix}/include/SDL2
+
+          Name: SDL2_mixer
+          Description: SDL2_mixer
+          Version: 2.0
+          Cflags: -I\${includedir}
+          Libs: -lSDL2_mixer
+          EOF
+
+          echo "PKG_CONFIG_PATH=$(pwd)/fake-pkgconfig" >> $GITHUB_ENV
+
+      ######################################################################
+      # BUILD GAME
+      ######################################################################
 
       - name: Build Game
         run: |
+          set -e
+
           cd "$SRC_DIR"
 
-          export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+          make clean || true
 
           make \
             CC=aarch64-linux-gnu-gcc \
-            CXX=aarch64-linux-gnu-g++
+            CXX=aarch64-linux-gnu-g++ \
+            STRIP=aarch64-linux-gnu-strip \
+            PLATFORM=linux \
+            -j$(nproc)
 
-      - name: Show build output
+      ######################################################################
+      # COLLECT BINARIES
+      ######################################################################
+
+      - name: Collect Artifacts
         run: |
-          echo "==== Build files ===="
-          find "$SRC_DIR" -type f | grep -E "linux|client|server|game"
+          mkdir -p build-output
 
-      - name: Upload artifacts
+          find extracted -type f \( -name "*.so" -o -name "*.a" -o -executable \) \
+            -exec cp {} build-output/ \; || true
+
+          echo "Collected files:"
+          ls -la build-output
+
+      ######################################################################
+      # UPLOAD
+      ######################################################################
+
+      - name: Upload Build
         uses: actions/upload-artifact@v4
         with:
-          name: redeclipse-build
-          path: |
-            extracted/**/*.so
-            extracted/**/*.a
-            extracted/**/*.exe
-            extracted/**/*.out
-            extracted/**/linux_* 
+          name: redeclipse-android-arm64
+          path: build-output
