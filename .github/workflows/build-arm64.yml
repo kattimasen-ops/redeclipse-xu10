@@ -8,6 +8,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+
       ########################################################
       # CHECKOUT
       ########################################################
@@ -56,22 +57,25 @@ jobs:
 
       - name: Extract source
         run: |
-          mkdir extracted
+          mkdir -p extracted
 
           ZIPFILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
 
           if [ -z "$ZIPFILE" ]; then
-            echo "ZIP FILE NOT FOUND"
+            echo "ERROR: No ZIP file found!"
             exit 1
           fi
 
+          echo "==== USING ZIP ===="
+          echo "$ZIPFILE"
+
           unzip "$ZIPFILE" -d extracted
 
-          echo "Extracted files:"
+          echo "==== EXTRACTED FILES ===="
           find extracted | head -100
 
       ########################################################
-      # FIND SRC
+      # FIND SRC DIRECTORY
       ########################################################
 
       - name: Find src directory
@@ -79,14 +83,14 @@ jobs:
           SRC_DIR=$(find extracted -type d -name src | head -n 1)
 
           if [ -z "$SRC_DIR" ]; then
-            echo "SRC DIRECTORY NOT FOUND"
+            echo "ERROR: src directory not found!"
             find extracted
             exit 1
           fi
 
           echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
 
-          echo "Using SRC_DIR:"
+          echo "==== FOUND SRC ===="
           echo "$SRC_DIR"
 
       ########################################################
@@ -122,19 +126,29 @@ jobs:
             -DSDL_WAYLAND=OFF \
             -DCMAKE_INSTALL_PREFIX=$HOME/sdl2-install
 
-          make -j$(nproc)
+          make
           make install
 
       ########################################################
-      # EXPORT SDL2 PKGCONFIG
+      # VERIFY SDL2
       ########################################################
 
-      - name: Export SDL2 pkg-config
+      - name: Verify SDL2
+        run: |
+          echo "==== SDL2 FILES ===="
+          find $HOME/sdl2-install | head -50
+
+          echo "==== PKGCONFIG ===="
+          ls $HOME/sdl2-install/lib/pkgconfig || true
+
+      ########################################################
+      # EXPORT SDL2 ENV
+      ########################################################
+
+      - name: Export SDL2 environment
         run: |
           echo "PKG_CONFIG_PATH=$HOME/sdl2-install/lib/pkgconfig" >> $GITHUB_ENV
-
-          echo "SDL2 pkg-config files:"
-          ls $HOME/sdl2-install/lib/pkgconfig || true
+          echo "SDL2_CONFIG=$HOME/sdl2-install/bin/sdl2-config" >> $GITHUB_ENV
 
       ########################################################
       # BUILD ENET
@@ -142,13 +156,25 @@ jobs:
 
       - name: Build ENet
         run: |
-          cd "$SRC_DIR"
+          cd "$SRC_DIR/enet"
 
-          make -C enet clean || true
+          echo "==== CLEAN ENET ===="
+          make clean || true
 
-          make -C enet \
+          echo "==== BUILD ENET ===="
+
+          make \
             CC=aarch64-linux-gnu-gcc \
-            AR=aarch64-linux-gnu-ar
+            AR=aarch64-linux-gnu-ar || true
+
+          echo "==== VERIFY ENET ===="
+
+          if [ ! -f "libenet.a" ]; then
+            echo "ERROR: libenet.a missing!"
+            exit 1
+          fi
+
+          echo "ENET BUILD SUCCESSFUL"
 
       ########################################################
       # BUILD ENGINE
@@ -158,18 +184,52 @@ jobs:
         run: |
           cd "$SRC_DIR"
 
+          export PKG_CONFIG_PATH=$HOME/sdl2-install/lib/pkgconfig
+          export SDL2_CONFIG=$HOME/sdl2-install/bin/sdl2-config
+
+          echo "==== PKG CONFIG ===="
+          pkg-config --list-all | grep SDL || true
+
+          echo "==== SDL2 VERSION ===="
+          $HOME/sdl2-install/bin/sdl2-config --version || true
+
+          echo "==== CLEAN ENGINE ===="
           make clean || true
 
-          export PKG_CONFIG_PATH=$HOME/sdl2-install/lib/pkgconfig
+          echo "==== BUILD ENGINE ===="
 
           make \
             CC=aarch64-linux-gnu-gcc \
             CXX=aarch64-linux-gnu-g++ \
             SDL2_CONFIG=$HOME/sdl2-install/bin/sdl2-config \
-            -j$(nproc)
+            V=1 || true
 
       ########################################################
-      # UPLOAD
+      # SHOW GENERATED FILES
+      ########################################################
+
+      - name: Show generated files
+        run: |
+          echo "==== GENERATED FILES ===="
+          find extracted -type f | grep -E '\.(a|so|exe|apk)$' || true
+
+      ########################################################
+      # VERIFY BUILD RESULT
+      ########################################################
+
+      - name: Verify build result
+        run: |
+          BIN_COUNT=$(find extracted -type f | grep -E '\.(a|so|exe|apk)$' | wc -l)
+
+          echo "Generated binaries: $BIN_COUNT"
+
+          if [ "$BIN_COUNT" -eq 0 ]; then
+            echo "ERROR: No binaries generated!"
+            exit 1
+          fi
+
+      ########################################################
+      # UPLOAD ARTIFACTS
       ########################################################
 
       - name: Upload artifacts
