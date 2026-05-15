@@ -45,12 +45,12 @@ jobs:
 
       - name: Build ENet
         run: |
-          cd redeclipse/src
+          cd base-2.0.0/src
           make -C enet CC=aarch64-linux-gnu-gcc
 
       - name: Build Redeclipse (ARM64)
         run: |
-          cd redeclipse/src
+          cd base-2.0.0/src
           make \
             CC=aarch64-linux-gnu-gcc \
             CXX=aarch64-linux-gnu-g++ \
