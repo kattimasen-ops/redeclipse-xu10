@@ -1,28 +1,52 @@
-- name: Install Dependencies
-  run: |
-    sudo apt update
-    sudo apt install -y \
-      unzip \
-      build-essential \
-      make \
-      pkg-config \
-      gcc-aarch64-linux-gnu \
-      g++-aarch64-linux-gnu \
-      libsdl2-dev \
-      libsdl2-image-dev \
-      libsdl2-mixer-dev \
-      libgl1-mesa-dev
+name: Build ARM64 Red Eclipse
 
-- name: Build
-  run: |
-    cd redeclipse/src
+on:
+  workflow_dispatch:
 
-    export CC=aarch64-linux-gnu-gcc
-    export CXX=aarch64-linux-gnu-g++
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-    make \
-      CC=$CC \
-      CXX=$CXX \
-      AR=aarch64-linux-gnu-ar \
-      RANLIB=aarch64-linux-gnu-ranlib \
-      CLIENT_INCLUDES="$(pkg-config --cflags sdl2)"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            unzip \
+            build-essential \
+            make \
+            pkg-config \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            libsdl2-dev \
+            libsdl2-image-dev \
+            libsdl2-mixer-dev \
+            libgl1-mesa-dev
+
+      - name: Extract source
+        run: |
+          unzip base-2.0.0.zip
+          mv base-2.0.0 redeclipse
+
+      - name: Build
+        run: |
+          cd redeclipse/src
+
+          export CC=aarch64-linux-gnu-gcc
+          export CXX=aarch64-linux-gnu-g++
+
+          make \
+            CC=$CC \
+            CXX=$CXX \
+            AR=aarch64-linux-gnu-ar \
+            RANLIB=aarch64-linux-gnu-ranlib \
+            CLIENT_INCLUDES="$(pkg-config --cflags sdl2) -D_REENTRANT -DSDL_DISABLE_IMMINTRIN_H"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: redeclipse-arm64
+          path: redeclipse/src/redeclipse*
