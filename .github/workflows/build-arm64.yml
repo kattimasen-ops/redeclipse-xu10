@@ -1,18 +1,14 @@
-name: Build ARM64 Red Eclipse (Stable Release)
+name: Build ARM64 Red Eclipse (Stable)
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
 
 jobs:
   build:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
@@ -35,7 +31,7 @@ jobs:
           unzip base-2.0.0.zip
           mv base-2.0.0 redeclipse
 
-      - name: Build ARM64
+      - name: Build
         run: |
           cd redeclipse/src
 
@@ -47,34 +43,13 @@ jobs:
             CXX=$CXX \
             AR=aarch64-linux-gnu-ar \
             RANLIB=aarch64-linux-gnu-ranlib \
-            CLIENT_INCLUDES="-D_REENTRANT -DSDL_DISABLE_IMMINTRIN_H"
+            CLIENT_INCLUDES="-I/usr/include/SDL2 -D_REENTRANT -DSDL_DISABLE_IMMINTRIN_H"
 
-      - name: Package build
+      - name: Package
         run: |
-          mkdir -p release
-          cp redeclipse/src/redeclipse* release/ || true
-          zip -r redeclipse-arm64.zip release
+          zip -r redeclipse-arm64.zip redeclipse/src/redeclipse* || true
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: redeclipse-arm64
           path: redeclipse-arm64.zip
-
-  release:
-    needs: build
-    runs-on: ubuntu-22.04
-    if: startsWith(github.ref, 'refs/tags/v')
-
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: redeclipse-arm64
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: redeclipse-arm64.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
