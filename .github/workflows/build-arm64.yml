@@ -241,20 +241,16 @@ jobs:
             extracted/**/src/**/*.so
             extracted/**/src/**/*.a
 
-            ########################################################
+      ########################################################
       # EXTRA: FIND AND ISOLATE REDECLIPSE BINARY
       ########################################################
 
       - name: Isolate Red Eclipse ARM64 Binary
         run: |
-          # Erstellt einen sauberen Ordner für die finale Binary
           mkdir -p final-binary
-
           echo "==== SEARCHING FOR EXECUTABLES ===="
-          # Sucht nach typischen Red Eclipse Binaries (re_client, re_server, redeclipse_linux)
           find extracted -type f -executable -name "re_*" -exec cp {} final-binary/ \; || true
           find extracted -type f -executable -name "redeclipse_*" -exec cp {} final-binary/ \; || true
-
           echo "==== FOUND BINARIES ===="
           ls -la final-binary
 
