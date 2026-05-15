@@ -1,4 +1,4 @@
-name: ARM64 Build Stable
+name: Build ARM64
 
 on:
   workflow_dispatch:
@@ -13,90 +13,92 @@ jobs:
 
       - name: Install dependencies
         run: |
+          sudo dpkg --add-architecture arm64
           sudo apt update
 
           sudo apt install -y \
-            build-essential \
-            make \
             unzip \
-            zip \
-            findutils \
-            libsdl2-dev \
+            cmake \
+            build-essential \
             gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu
+            g++-aarch64-linux-gnu \
+            pkg-config \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxinerama-dev \
+            libxxf86vm-dev \
+            libasound2-dev
 
-      - name: Show repository
+      - name: Extract source zip
         run: |
-          echo "===== ROOT ====="
-          pwd
-          ls -la
+          unzip -o base-2.0.0.zip -d extracted
 
-      - name: Extract ZIP
-        run: |
-          mkdir extracted
+          echo "==== FILE TREE ===="
+          find extracted | head -100
 
-          unzip base-2.0.0.zip -d extracted
-
-          echo "===== EXTRACTED FILES ====="
-          find extracted | head -200
-
-      - name: Find real src directory
+      - name: Locate src directory
         run: |
           SRC_DIR=$(find extracted -type d -name src | head -n 1)
 
           if [ -z "$SRC_DIR" ]; then
-            echo "ERROR: src not found after extraction"
+            echo "ERROR: src directory not found!"
             exit 1
           fi
 
-          echo "SRC FOUND:"
-          echo "$SRC_DIR"
-
           echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
 
-      - name: Verify src contents
-        run: |
-          echo "===== SRC CONTENT ====="
-          ls -la "$SRC_DIR"
+          echo "FOUND SRC:"
+          echo "$SRC_DIR"
 
       - name: Build ENet
         run: |
           cd "$SRC_DIR"
+          make -C enet
 
-          make -C enet \
-            CC=aarch64-linux-gnu-gcc \
-            AR=aarch64-linux-gnu-ar
+      - name: Build SDL2 locally
+        run: |
+          git clone --depth 1 --branch release-2.30.2 https://github.com/libsdl-org/SDL.git
 
-      - name: Build game
+          cd SDL
+
+          mkdir build
+          cd build
+
+          CC=aarch64-linux-gnu-gcc \
+          CXX=aarch64-linux-gnu-g++ \
+          cmake .. \
+            -DSDL_STATIC=ON \
+            -DSDL_SHARED=OFF \
+            -DCMAKE_INSTALL_PREFIX=/usr/aarch64-linux-gnu
+
+          make -j$(nproc)
+
+          sudo make install
+
+      - name: Build Game
         run: |
           cd "$SRC_DIR"
 
-          export CC=aarch64-linux-gnu-gcc
           export CXX=aarch64-linux-gnu-g++
+          export CC=aarch64-linux-gnu-gcc
 
-          export CFLAGS="-I/usr/include/SDL2 -D_REENTRANT"
-          export CXXFLAGS="-I/usr/include/SDL2 -D_REENTRANT"
-
-          make clean || true
+          make clean
 
           make \
-            CC=aarch64-linux-gnu-gcc \
+            PLATFORM=linux \
             CXX=aarch64-linux-gnu-g++ \
-            CFLAGS="-I/usr/include/SDL2 -D_REENTRANT" \
-            CXXFLAGS="-I/usr/include/SDL2 -D_REENTRANT"
+            CC=aarch64-linux-gnu-gcc \
+            CFLAGS="-I/usr/aarch64-linux-gnu/include/SDL2" \
+            CXXFLAGS="-I/usr/aarch64-linux-gnu/include/SDL2" \
+            LDFLAGS="-L/usr/aarch64-linux-gnu/lib"
 
-      - name: Create release
-        run: |
-          mkdir release
-
-          cp -r extracted/* release/
-
-          cd release
-
-          zip -r arm64-build.zip .
-
-      - name: Upload build
+      - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: arm64-build
-          path: release/arm64-build.zip
+          name: redeclipse-arm64
+          path: extracted
