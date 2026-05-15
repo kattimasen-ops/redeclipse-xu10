@@ -1,4 +1,4 @@
-name: Build ARM64
+name: Android ARM64 Build
 
 on:
   workflow_dispatch:
@@ -11,98 +11,107 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install host dependencies
+      - name: Find ZIP
+        id: findzip
         run: |
-          sudo apt update
+          ZIP_FILE=$(find . -maxdepth 2 -iname "*.zip" | head -n 1)
 
-          sudo apt install -y \
-            unzip \
-            git \
-            cmake \
-            make \
-            build-essential \
-            pkg-config \
-            gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu \
-            libgl1-mesa-dev \
-            libglu1-mesa-dev \
-            libx11-dev \
-            libxcursor-dev \
-            libxext-dev \
-            libxrandr-dev \
-            libxi-dev \
-            libxinerama-dev \
-            libxxf86vm-dev \
-            libasound2-dev
+          if [ -z "$ZIP_FILE" ]; then
+            echo "No ZIP file found!"
+            exit 1
+          fi
 
-      - name: Extract source archive
+          echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_ENV
+          echo "Using ZIP: $ZIP_FILE"
+
+      - name: Extract ZIP
         run: |
+          rm -rf extracted
           mkdir extracted
 
-          unzip -o base-2.0.0.zip -d extracted
+          unzip -o "$ZIP_FILE" -d extracted
 
-          echo "==== EXTRACTED FILES ===="
-          find extracted | head -200
+          echo "==== Extracted folders ===="
+          find extracted -type d
 
-      - name: Find src directory
+      - name: Locate src directory
         run: |
           SRC_DIR=$(find extracted -type d -name src | head -n 1)
 
           if [ -z "$SRC_DIR" ]; then
             echo "ERROR: src directory not found!"
+            echo "Folders:"
+            find extracted -type d
             exit 1
           fi
 
           echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
 
-          echo "FOUND SRC DIR:"
+          echo "Found src:"
           echo "$SRC_DIR"
+
+      - name: Install dependencies
+        run: |
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://ports.ubuntu.com/ubuntu-ports|g' /etc/apt/sources.list
+          sudo sed -i 's|http://security.ubuntu.com/ubuntu|http://ports.ubuntu.com/ubuntu-ports|g' /etc/apt/sources.list
+
+          sudo dpkg --add-architecture arm64
+          sudo apt update
+
+          sudo apt install -y \
+            build-essential \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            pkg-config \
+            make \
+            unzip \
+            zip \
+            libx11-dev:arm64 \
+            libgl1-mesa-dev:arm64 \
+            zlib1g-dev:arm64 \
+            libsdl2-dev:arm64 \
+            libsdl2-image-dev:arm64 \
+            libsdl2-mixer-dev:arm64
+
+      - name: Verify SDL2 pkg-config
+        run: |
+          export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+
+          pkg-config --modversion sdl2
+          pkg-config --modversion SDL2_image
+          pkg-config --modversion SDL2_mixer
 
       - name: Build ENet
         run: |
           cd "$SRC_DIR"
 
-          make -C enet
+          make -C enet clean
 
-      - name: Build SDL2 locally
-        run: |
-          git clone --depth 1 --branch release-2.30.2 \
-            https://github.com/libsdl-org/SDL.git
-
-          cd SDL
-
-          mkdir build
-          cd build
-
-          CC=aarch64-linux-gnu-gcc \
-          CXX=aarch64-linux-gnu-g++ \
-          cmake .. \
-            -DSDL_STATIC=ON \
-            -DSDL_SHARED=OFF
-
-          make -j$(nproc)
+          make -C enet \
+            CC=aarch64-linux-gnu-gcc
 
       - name: Build Game
         run: |
           cd "$SRC_DIR"
 
-          export CC=aarch64-linux-gnu-gcc
-          export CXX=aarch64-linux-gnu-g++
-
-          export CFLAGS="-I$GITHUB_WORKSPACE/SDL/include"
-          export CXXFLAGS="-I$GITHUB_WORKSPACE/SDL/include"
-
-          make clean
+          export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
 
           make \
-            PLATFORM=linux \
             CC=aarch64-linux-gnu-gcc \
-            CXX=aarch64-linux-gnu-g++ \
-            CLIENT=1 \
-            SERVER=1
+            CXX=aarch64-linux-gnu-g++
+
+      - name: Show build output
+        run: |
+          echo "==== Build files ===="
+          find "$SRC_DIR" -type f | grep -E "linux|client|server|game"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: redeclipse-arm64
-          path: extracted
+          name: redeclipse-build
+          path: |
+            extracted/**/*.so
+            extracted/**/*.a
+            extracted/**/*.exe
+            extracted/**/*.out
+            extracted/**/linux_* 
