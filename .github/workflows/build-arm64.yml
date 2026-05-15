@@ -17,9 +17,9 @@ jobs:
 
           sudo apt install -y \
             build-essential \
+            make \
             unzip \
             zip \
-            make \
             findutils \
             libsdl2-dev \
             gcc-aarch64-linux-gnu \
@@ -31,46 +31,32 @@ jobs:
           pwd
           ls -la
 
-      - name: Find ZIP
-        run: |
-          ZIP_FILE=$(find . -iname "*.zip" | head -n 1)
-
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: ZIP not found"
-            exit 1
-          fi
-
-          echo "ZIP FOUND:"
-          echo "$ZIP_FILE"
-
-          echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_ENV
-
       - name: Extract ZIP
         run: |
           mkdir extracted
 
-          unzip "$ZIP_FILE" -d extracted
+          unzip base-2.0.0.zip -d extracted
 
-          echo "===== EXTRACTED ====="
-          find extracted -type d | sort
+          echo "===== EXTRACTED FILES ====="
+          find extracted | head -200
 
-      - name: Find src folder
+      - name: Find real src directory
         run: |
           SRC_DIR=$(find extracted -type d -name src | head -n 1)
 
           if [ -z "$SRC_DIR" ]; then
-            echo "ERROR: src directory not found!"
+            echo "ERROR: src not found after extraction"
             exit 1
           fi
 
-          echo "SRC_DIR FOUND:"
+          echo "SRC FOUND:"
           echo "$SRC_DIR"
 
           echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
 
-      - name: Verify src content
+      - name: Verify src contents
         run: |
-          echo "===== SRC ====="
+          echo "===== SRC CONTENT ====="
           ls -la "$SRC_DIR"
 
       - name: Build ENet
@@ -81,7 +67,7 @@ jobs:
             CC=aarch64-linux-gnu-gcc \
             AR=aarch64-linux-gnu-ar
 
-      - name: Build project
+      - name: Build game
         run: |
           cd "$SRC_DIR"
 
@@ -99,7 +85,7 @@ jobs:
             CFLAGS="-I/usr/include/SDL2 -D_REENTRANT" \
             CXXFLAGS="-I/usr/include/SDL2 -D_REENTRANT"
 
-      - name: Create archive
+      - name: Create release
         run: |
           mkdir release
 
@@ -109,7 +95,7 @@ jobs:
 
           zip -r arm64-build.zip .
 
-      - name: Upload artifact
+      - name: Upload build
         uses: actions/upload-artifact@v4
         with:
           name: arm64-build
