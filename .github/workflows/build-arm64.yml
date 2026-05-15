@@ -2,17 +2,13 @@ name: Build ARM64 Stable
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - master
 
 jobs:
   build-arm64:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install dependencies
@@ -21,63 +17,75 @@ jobs:
 
           sudo apt install -y \
             build-essential \
-            cmake \
-            git \
-            zip \
-            unzip \
-            pkg-config \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu \
+            make \
+            unzip \
+            zip \
+            findutils \
             libsdl2-dev
 
-      - name: Show repository structure
+      - name: Show repository files
         run: |
-          echo "==== ROOT ===="
+          echo "==== ROOT FILES ===="
           ls -la
 
-          echo "==== SEARCHING SRC ===="
-          find . -type d -name src
-
-      - name: Auto-detect source directory
-        id: detect
+      - name: Find and extract ZIP
         run: |
-          SRC_DIR=$(find . -type d -path "*/src" | head -n 1)
+          ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No ZIP file found!"
+            exit 1
+          fi
+
+          echo "ZIP FOUND:"
+          echo "$ZIP_FILE"
+
+          mkdir extracted
+
+          unzip "$ZIP_FILE" -d extracted
+
+          echo "==== EXTRACTED CONTENT ===="
+          find extracted -maxdepth 3 -type d
+
+      - name: Detect source directories
+        run: |
+          SRC_DIR=$(find extracted -type d -name src | head -n 1)
 
           if [ -z "$SRC_DIR" ]; then
             echo "ERROR: src directory not found!"
             exit 1
           fi
 
-          echo "Found src directory:"
-          echo "$SRC_DIR"
+          echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
 
           BASE_DIR=$(dirname "$SRC_DIR")
 
           echo "BASE_DIR=$BASE_DIR" >> $GITHUB_ENV
-          echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
 
-      - name: Verify folders
-        run: |
-          echo "BASE_DIR=$BASE_DIR"
+          echo "==== DETECTED ===="
           echo "SRC_DIR=$SRC_DIR"
+          echo "BASE_DIR=$BASE_DIR"
 
-          ls -la "$BASE_DIR"
-          ls -la "$SRC_DIR"
+      - name: Verify enet exists
+        run: |
+          if [ ! -d "$SRC_DIR/enet" ]; then
+            echo "ERROR: enet folder missing!"
+            exit 1
+          fi
+
+          echo "enet folder found"
 
       - name: Build ENet
         run: |
           cd "$SRC_DIR"
 
-          if [ ! -d "enet" ]; then
-            echo "ERROR: enet folder missing!"
-            exit 1
-          fi
-
           make -C enet \
             CC=aarch64-linux-gnu-gcc \
             AR=aarch64-linux-gnu-ar
 
-      - name: Build game
+      - name: Build project
         run: |
           cd "$SRC_DIR"
 
@@ -96,7 +104,7 @@ jobs:
             CFLAGS="-I/usr/include/SDL2 -D_REENTRANT" \
             CXXFLAGS="-I/usr/include/SDL2 -D_REENTRANT"
 
-      - name: Package build
+      - name: Package release
         run: |
           mkdir -p release
 
