@@ -1,113 +1,113 @@
-name: Hauch ARM64 Stable Build
+name: Build ARM64 Stable
 
 on:
-  push:
-  pull_request:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
 
 jobs:
   build-arm64:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Show repository structure
-        run: |
-          echo "=== ROOT ==="
-          pwd
-          ls -la
-
-          echo "=== DIRECTORY TREE ==="
-          find . -maxdepth 3 -type d
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
+          sudo apt update
 
-          sudo apt-get install -y \
+          sudo apt install -y \
             build-essential \
-            make \
+            cmake \
+            git \
+            zip \
+            unzip \
             pkg-config \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu \
-            libsdl2-dev \
-            libsdl2-image-dev \
-            libsdl2-mixer-dev \
-            libsdl2-ttf-dev \
-            libgl1-mesa-dev \
-            libx11-dev \
-            libxext-dev \
-            libxi-dev \
-            libxrandr-dev \
-            libasound2-dev \
-            libpulse-dev \
-            libudev-dev
+            libsdl2-dev
 
-      - name: Verify SDL2
+      - name: Show repository structure
         run: |
-          echo "=== SDL2 VERSION ==="
-          pkg-config --modversion sdl2
+          echo "==== ROOT ===="
+          ls -la
 
-          echo "=== SDL2 INCLUDE ==="
-          ls /usr/include/SDL2
+          echo "==== SEARCHING SRC ===="
+          find . -type d -name src
 
-      - name: Detect source directory
+      - name: Auto-detect source directory
+        id: detect
         run: |
-          SRC_DIR=$(find . -type d -name src | head -n 1)
+          SRC_DIR=$(find . -type d -path "*/src" | head -n 1)
 
           if [ -z "$SRC_DIR" ]; then
             echo "ERROR: src directory not found!"
             exit 1
           fi
 
-          echo "FOUND SRC DIR: $SRC_DIR"
+          echo "Found src directory:"
+          echo "$SRC_DIR"
 
+          BASE_DIR=$(dirname "$SRC_DIR")
+
+          echo "BASE_DIR=$BASE_DIR" >> $GITHUB_ENV
           echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
 
-      - name: Verify ENet exists
+      - name: Verify folders
         run: |
-          echo "=== CHECKING ENET ==="
+          echo "BASE_DIR=$BASE_DIR"
+          echo "SRC_DIR=$SRC_DIR"
 
-          if [ ! -d "$SRC_DIR/enet" ]; then
-            echo "ERROR: enet directory missing!"
-            echo "Contents of SRC_DIR:"
-            ls -la "$SRC_DIR"
-            exit 1
-          fi
-
-          echo "ENET FOUND"
+          ls -la "$BASE_DIR"
+          ls -la "$SRC_DIR"
 
       - name: Build ENet
         run: |
           cd "$SRC_DIR"
 
-          make -C enet \
-            CC=aarch64-linux-gnu-gcc
+          if [ ! -d "enet" ]; then
+            echo "ERROR: enet folder missing!"
+            exit 1
+          fi
 
-      - name: Build Hauch ARM64
+          make -C enet \
+            CC=aarch64-linux-gnu-gcc \
+            AR=aarch64-linux-gnu-ar
+
+      - name: Build game
         run: |
           cd "$SRC_DIR"
 
+          export CC=aarch64-linux-gnu-gcc
+          export CXX=aarch64-linux-gnu-g++
+
+          export CFLAGS="-I/usr/include/SDL2 -D_REENTRANT"
+          export CXXFLAGS="-I/usr/include/SDL2 -D_REENTRANT"
+
+          make clean || true
+
           make \
+            PLATFORM=linux \
             CC=aarch64-linux-gnu-gcc \
             CXX=aarch64-linux-gnu-g++ \
-            AR=aarch64-linux-gnu-ar \
             CFLAGS="-I/usr/include/SDL2 -D_REENTRANT" \
-            CXXFLAGS="-I/usr/include/SDL2 -D_REENTRANT" \
-            -j$(nproc)
+            CXXFLAGS="-I/usr/include/SDL2 -D_REENTRANT"
 
-      - name: Show build results
+      - name: Package build
         run: |
-          echo "=== BUILD OUTPUT ==="
-          find . -type f | grep -E "\.(bin|exe|so)$" || true
+          mkdir -p release
 
-      - name: Upload artifacts
+          cp -r "$BASE_DIR" release/game
+
+          cd release
+
+          zip -r arm64-build.zip game
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: hauch-arm64-build
-          path: |
-            **/*.bin
-            **/*.exe
-            **/*.so
+          name: arm64-build
+          path: release/arm64-build.zip
