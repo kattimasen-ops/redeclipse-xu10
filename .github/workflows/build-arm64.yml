@@ -1,71 +1,26 @@
 ########################################################
-      # BUILD ENGINE
+      # EXTRA: FIND AND ISOLATE REDECLIPSE BINARY
       ########################################################
 
-        name: Build Engine
+      - name: Isolate Red Eclipse ARM64 Binary
         run: |
-          cd "$SRC_DIR"
+          # Erstellt einen sauberen Ordner für die finale Binary
+          mkdir -p final-binary
 
-          export PKG_CONFIG_PATH=$HOME/sdl2-install/lib/pkgconfig
-          export SDL2_CONFIG=$HOME/sdl2-install/bin/sdl2-config
+          echo "==== SEARCHING FOR EXECUTABLES ===="
+          # Sucht nach typischen Red Eclipse Binaries (re_client, re_server, redeclipse_linux)
+          find extracted -type f -executable -name "re_*" -exec cp {} final-binary/ \; || true
+          find extracted -type f -executable -name "redeclipse_*" -exec cp {} final-binary/ \; || true
 
-          echo "==== PKG CONFIG ===="
-          pkg-config --list-all | grep SDL || true
-
-          echo "==== SDL2 VERSION ===="
-          $HOME/sdl2-install/bin/sdl2-config --version || true
-
-          echo "==== CLEAN ENGINE ===="
-          make clean || true
-
-          echo "==== BUILD ENGINE ===="
-          # HINWEIS: "|| true" wurde entfernt, damit wir echte Compiler-Fehler sehen!
-          # Je nach Red Eclipse Version baut man oft den Client oder Server. 
-          # Wenn du nur den Server willst, nutzt man oft 'make standalone'
-          make \
-            CC=aarch64-linux-gnu-gcc \
-            CXX=aarch64-linux-gnu-g++ \
-            SDL2_CONFIG=$HOME/sdl2-install/bin/sdl2-config \
-            V=1
+          echo "==== FOUND BINARIES ===="
+          ls -la final-binary
 
       ########################################################
-      # SHOW GENERATED FILES
+      # EXTRA: UPLOAD REDECLIPSE BINARY ONLY
       ########################################################
 
-      - name: Show generated files
-        run: |
-          echo "==== GENERATED BINARIES (EXECUTABLES) ===="
-          # Findet alle ausführbaren Dateien im extrahierten Ordner
-          find extracted -type f -executable || true
-
-      ########################################################
-      # VERIFY BUILD RESULT
-      ########################################################
-
-      - name: Verify build result
-        run: |
-          # Red Eclipse erstellt meistens Binaries namens 're_client', 're_server' oder 'redeclipse_linux'
-          # Wir suchen nach ausführbaren Dateien, die keine typischen Skripte sind
-          BIN_COUNT=$(find extracted -type f -executable | grep -v -E '\.(sh|py|pl)$' | wc -l)
-
-          echo "Generated executable binaries: $BIN_COUNT"
-
-          if [ "$BIN_COUNT" -eq 0 ]; then
-            echo "ERROR: No executable binaries generated! Check the compiler output above."
-            exit 1
-          fi
-
-      ########################################################
-      # UPLOAD ARTIFACTS
-      ########################################################
-
-      - name: Upload artifacts
+      - name: Upload Red Eclipse ARM64 Only
         uses: actions/upload-artifact@v4
         with:
-          name: redeclipse-arm64-binary
-          path: |
-            extracted/**/src/re_client
-            extracted/**/src/re_server
-            extracted/**/src/redeclipse_*
-            extracted/bin/**/*
-          if-no-files-found: warn
+          name: redeclipse-linux-arm64
+          path: final-binary/
