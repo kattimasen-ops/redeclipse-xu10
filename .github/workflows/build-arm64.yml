@@ -8,20 +8,19 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install packages
+      - name: Install dependencies
         run: |
           sudo apt update
 
           sudo apt install -y \
             build-essential \
-            make \
             unzip \
             zip \
+            make \
             findutils \
-            pkg-config \
             libsdl2-dev \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu
@@ -32,19 +31,19 @@ jobs:
           pwd
           ls -la
 
-      - name: Find ZIP file
+      - name: Find ZIP
         run: |
-          ZIP=$(find . -maxdepth 2 -iname "*.zip" | head -n 1)
+          ZIP_FILE=$(find . -iname "*.zip" | head -n 1)
 
-          if [ -z "$ZIP" ]; then
-            echo "ERROR: No ZIP file found"
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: ZIP not found"
             exit 1
           fi
 
           echo "ZIP FOUND:"
-          echo "$ZIP"
+          echo "$ZIP_FILE"
 
-          echo "ZIP_FILE=$ZIP" >> $GITHUB_ENV
+          echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_ENV
 
       - name: Extract ZIP
         run: |
@@ -55,41 +54,24 @@ jobs:
           echo "===== EXTRACTED ====="
           find extracted -type d | sort
 
-      - name: Detect valid source directory
+      - name: Find src folder
         run: |
-          VALID_SRC=""
+          SRC_DIR=$(find extracted -type d -name src | head -n 1)
 
-          while IFS= read -r dir
-          do
-            echo "Checking: $dir"
-
-            if [ -f "$dir/Makefile" ] && [ -d "$dir/enet" ]; then
-              VALID_SRC="$dir"
-              break
-            fi
-
-          done < <(find extracted -type d -name src)
-
-          if [ -z "$VALID_SRC" ]; then
-            echo "ERROR: No valid src directory found"
-            echo "Need BOTH:"
-            echo "- src/Makefile"
-            echo "- src/enet/"
+          if [ -z "$SRC_DIR" ]; then
+            echo "ERROR: src directory not found!"
             exit 1
           fi
 
-          echo "VALID SRC:"
-          echo "$VALID_SRC"
+          echo "SRC_DIR FOUND:"
+          echo "$SRC_DIR"
 
-          echo "SRC_DIR=$VALID_SRC" >> $GITHUB_ENV
+          echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
 
-      - name: Debug source folder
+      - name: Verify src content
         run: |
-          echo "===== SRC CONTENT ====="
+          echo "===== SRC ====="
           ls -la "$SRC_DIR"
-
-          echo "===== ENET CONTENT ====="
-          ls -la "$SRC_DIR/enet"
 
       - name: Build ENet
         run: |
@@ -117,9 +99,9 @@ jobs:
             CFLAGS="-I/usr/include/SDL2 -D_REENTRANT" \
             CXXFLAGS="-I/usr/include/SDL2 -D_REENTRANT"
 
-      - name: Create release archive
+      - name: Create archive
         run: |
-          mkdir -p release
+          mkdir release
 
           cp -r extracted/* release/
 
