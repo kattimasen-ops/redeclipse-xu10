@@ -1,81 +1,95 @@
-name: Build ARM64 Stable
+name: ARM64 Build Stable
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-arm64:
+  build:
     runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install packages
         run: |
           sudo apt update
 
           sudo apt install -y \
             build-essential \
-            gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu \
             make \
             unzip \
             zip \
             findutils \
-            libsdl2-dev
+            pkg-config \
+            libsdl2-dev \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu
 
-      - name: Show repository files
+      - name: Show repository
         run: |
-          echo "==== ROOT FILES ===="
+          echo "===== ROOT ====="
+          pwd
           ls -la
 
-      - name: Find and extract ZIP
+      - name: Find ZIP file
         run: |
-          ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
+          ZIP=$(find . -maxdepth 2 -iname "*.zip" | head -n 1)
 
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No ZIP file found!"
+          if [ -z "$ZIP" ]; then
+            echo "ERROR: No ZIP file found"
             exit 1
           fi
 
           echo "ZIP FOUND:"
-          echo "$ZIP_FILE"
+          echo "$ZIP"
 
+          echo "ZIP_FILE=$ZIP" >> $GITHUB_ENV
+
+      - name: Extract ZIP
+        run: |
           mkdir extracted
 
           unzip "$ZIP_FILE" -d extracted
 
-          echo "==== EXTRACTED CONTENT ===="
-          find extracted -maxdepth 3 -type d
+          echo "===== EXTRACTED ====="
+          find extracted -type d | sort
 
-      - name: Detect source directories
+      - name: Detect valid source directory
         run: |
-          SRC_DIR=$(find extracted -type d -name src | head -n 1)
+          VALID_SRC=""
 
-          if [ -z "$SRC_DIR" ]; then
-            echo "ERROR: src directory not found!"
+          while IFS= read -r dir
+          do
+            echo "Checking: $dir"
+
+            if [ -f "$dir/Makefile" ] && [ -d "$dir/enet" ]; then
+              VALID_SRC="$dir"
+              break
+            fi
+
+          done < <(find extracted -type d -name src)
+
+          if [ -z "$VALID_SRC" ]; then
+            echo "ERROR: No valid src directory found"
+            echo "Need BOTH:"
+            echo "- src/Makefile"
+            echo "- src/enet/"
             exit 1
           fi
 
-          echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
+          echo "VALID SRC:"
+          echo "$VALID_SRC"
 
-          BASE_DIR=$(dirname "$SRC_DIR")
+          echo "SRC_DIR=$VALID_SRC" >> $GITHUB_ENV
 
-          echo "BASE_DIR=$BASE_DIR" >> $GITHUB_ENV
-
-          echo "==== DETECTED ===="
-          echo "SRC_DIR=$SRC_DIR"
-          echo "BASE_DIR=$BASE_DIR"
-
-      - name: Verify enet exists
+      - name: Debug source folder
         run: |
-          if [ ! -d "$SRC_DIR/enet" ]; then
-            echo "ERROR: enet folder missing!"
-            exit 1
-          fi
+          echo "===== SRC CONTENT ====="
+          ls -la "$SRC_DIR"
 
-          echo "enet folder found"
+          echo "===== ENET CONTENT ====="
+          ls -la "$SRC_DIR/enet"
 
       - name: Build ENet
         run: |
@@ -98,21 +112,20 @@ jobs:
           make clean || true
 
           make \
-            PLATFORM=linux \
             CC=aarch64-linux-gnu-gcc \
             CXX=aarch64-linux-gnu-g++ \
             CFLAGS="-I/usr/include/SDL2 -D_REENTRANT" \
             CXXFLAGS="-I/usr/include/SDL2 -D_REENTRANT"
 
-      - name: Package release
+      - name: Create release archive
         run: |
           mkdir -p release
 
-          cp -r "$BASE_DIR" release/game
+          cp -r extracted/* release/
 
           cd release
 
-          zip -r arm64-build.zip game
+          zip -r arm64-build.zip .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
