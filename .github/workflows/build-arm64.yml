@@ -1,4 +1,247 @@
-########################################################
+name: Android ARM64 Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+
+      ########################################################
+      # CHECKOUT
+      ########################################################
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      ########################################################
+      # FIX UBUNTU MIRRORS
+      ########################################################
+
+      - name: Fix Ubuntu mirrors
+        run: |
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+          sudo sed -i 's|http://security.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+
+      ########################################################
+      # INSTALL DEPENDENCIES
+      ########################################################
+
+      - name: Install packages
+        run: |
+          sudo apt update
+
+          sudo apt install -y \
+            build-essential \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            make \
+            cmake \
+            git \
+            unzip \
+            zip \
+            wget \
+            autoconf \
+            automake \
+            libtool \
+            pkg-config \
+            libx11-dev \
+            libgl1-mesa-dev \
+            zlib1g-dev
+
+      ########################################################
+      # EXTRACT ZIP
+      ########################################################
+
+      - name: Extract source
+        run: |
+          mkdir -p extracted
+
+          ZIPFILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
+
+          if [ -z "$ZIPFILE" ]; then
+            echo "ERROR: No ZIP file found!"
+            exit 1
+          fi
+
+          echo "==== USING ZIP ===="
+          echo "$ZIPFILE"
+
+          unzip "$ZIPFILE" -d extracted
+
+          echo "==== EXTRACTED FILES ===="
+          find extracted | head -100
+
+      ########################################################
+      # FIND SRC DIRECTORY
+      ########################################################
+
+      - name: Find src directory
+        run: |
+          SRC_DIR=$(find extracted -type d -name src | head -n 1)
+
+          if [ -z "$SRC_DIR" ]; then
+            echo "ERROR: src directory not found!"
+            find extracted
+            exit 1
+          fi
+
+          echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
+
+          echo "==== FOUND SRC ===="
+          echo "$SRC_DIR"
+
+      ########################################################
+      # DOWNLOAD SDL2
+      ########################################################
+
+      - name: Download SDL2
+        run: |
+          wget https://github.com/libsdl-org/SDL/releases/download/release-2.30.2/SDL2-2.30.2.tar.gz
+
+          tar -xzf SDL2-2.30.2.tar.gz
+
+      ########################################################
+      # BUILD SDL2
+      ########################################################
+
+      - name: Build SDL2
+        run: |
+          cd SDL2-2.30.2
+
+          mkdir build
+          cd build
+
+          CC=aarch64-linux-gnu-gcc \
+          CXX=aarch64-linux-gnu-g++ \
+          cmake .. \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
+            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
+            -DSDL_STATIC=ON \
+            -DSDL_SHARED=OFF \
+            -DSDL_X11=OFF \
+            -DSDL_WAYLAND=OFF \
+            -DCMAKE_INSTALL_PREFIX=$HOME/sdl2-install
+
+          make
+          make install
+
+      ########################################################
+      # VERIFY SDL2
+      ########################################################
+
+      - name: Verify SDL2
+        run: |
+          echo "==== SDL2 FILES ===="
+          find $HOME/sdl2-install | head -50
+
+          echo "==== PKGCONFIG ===="
+          ls $HOME/sdl2-install/lib/pkgconfig || true
+
+      ########################################################
+      # EXPORT SDL2 ENV
+      ########################################################
+
+      - name: Export SDL2 environment
+        run: |
+          echo "PKG_CONFIG_PATH=$HOME/sdl2-install/lib/pkgconfig" >> $GITHUB_ENV
+          echo "SDL2_CONFIG=$HOME/sdl2-install/bin/sdl2-config" >> $GITHUB_ENV
+
+      ########################################################
+      # BUILD ENET
+      ########################################################
+
+      - name: Build ENet
+        run: |
+          cd "$SRC_DIR/enet"
+
+          echo "==== CLEAN ENET ===="
+          make clean || true
+
+          echo "==== BUILD ENET ===="
+
+          make \
+            CC=aarch64-linux-gnu-gcc \
+            AR=aarch64-linux-gnu-ar || true
+
+          echo "==== VERIFY ENET ===="
+
+          if [ ! -f "libenet.a" ]; then
+            echo "ERROR: libenet.a missing!"
+            exit 1
+          fi
+
+          echo "ENET BUILD SUCCESSFUL"
+
+      ########################################################
+      # BUILD ENGINE
+      ########################################################
+
+      - name: Build Engine
+        run: |
+          cd "$SRC_DIR"
+
+          export PKG_CONFIG_PATH=$HOME/sdl2-install/lib/pkgconfig
+          export SDL2_CONFIG=$HOME/sdl2-install/bin/sdl2-config
+
+          echo "==== PKG CONFIG ===="
+          pkg-config --list-all | grep SDL || true
+
+          echo "==== SDL2 VERSION ===="
+          $HOME/sdl2-install/bin/sdl2-config --version || true
+
+          echo "==== CLEAN ENGINE ===="
+          make clean || true
+
+          echo "==== BUILD ENGINE ===="
+
+          make \
+            CC=aarch64-linux-gnu-gcc \
+            CXX=aarch64-linux-gnu-g++ \
+            SDL2_CONFIG=$HOME/sdl2-install/bin/sdl2-config \
+            V=1 || true
+
+      ########################################################
+      # SHOW GENERATED FILES
+      ########################################################
+
+      - name: Show generated files
+        run: |
+          echo "==== GENERATED FILES ===="
+          find extracted -type f | grep -E '\.(a|so|exe|apk)$' || true
+
+      ########################################################
+      # VERIFY BUILD RESULT
+      ########################################################
+
+      - name: Verify build result
+        run: |
+          BIN_COUNT=$(find extracted -type f | grep -E '\.(a|so|exe|apk)$' | wc -l)
+
+          echo "Generated binaries: $BIN_COUNT"
+
+          if [ "$BIN_COUNT" -eq 0 ]; then
+            echo "ERROR: No binaries generated!"
+            exit 1
+          fi
+
+      ########################################################
+      # UPLOAD ARTIFACTS
+      ########################################################
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: |
+            extracted/**/bin/**
+            extracted/**/src/**/*.so
+            extracted/**/src/**/*.a
+
+            ########################################################
       # EXTRA: FIND AND ISOLATE REDECLIPSE BINARY
       ########################################################
 
