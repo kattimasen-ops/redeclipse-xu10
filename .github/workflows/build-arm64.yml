@@ -1,4 +1,4 @@
-name: Android ARM64 Build
+name: Build Red Eclipse ARM64 (XU10)
 
 on:
   workflow_dispatch:
@@ -8,248 +8,134 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-
-      ########################################################
-      # CHECKOUT
-      ########################################################
-
       - name: Checkout
         uses: actions/checkout@v4
 
-      ########################################################
-      # FIX UBUNTU MIRRORS
-      ########################################################
+      ####################################################################
+      # INSTALL TOOLCHAIN + LIBS
+      ####################################################################
 
-      - name: Fix Ubuntu mirrors
+      - name: Install dependencies
         run: |
-          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
-          sudo sed -i 's|http://security.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+          sudo apt-get update
 
-      ########################################################
-      # INSTALL DEPENDENCIES
-      ########################################################
-
-      - name: Install packages
-        run: |
-          sudo apt update
-
-          sudo apt install -y \
+          sudo apt-get install -y \
             build-essential \
+            cmake \
+            make \
+            git \
+            zip \
+            unzip \
+            pkg-config \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu \
-            make \
-            cmake \
-            git \
-            unzip \
-            zip \
-            wget \
-            autoconf \
-            automake \
-            libtool \
-            pkg-config \
-            libx11-dev \
+            libsdl2-dev \
+            libsdl2-image-dev \
+            libsdl2-mixer-dev \
             libgl1-mesa-dev \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxxf86vm-dev \
             zlib1g-dev
 
-      ########################################################
+      ####################################################################
       # EXTRACT ZIP
-      ########################################################
+      ####################################################################
 
-      - name: Extract source
+      - name: Extract source archive
         run: |
-          mkdir -p extracted
+          mkdir extracted
 
-          ZIPFILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
+          ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
 
-          if [ -z "$ZIPFILE" ]; then
-            echo "ERROR: No ZIP file found!"
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No zip file found!"
             exit 1
           fi
 
-          echo "==== USING ZIP ===="
-          echo "$ZIPFILE"
+          echo "Using ZIP: $ZIP_FILE"
 
-          unzip "$ZIPFILE" -d extracted
+          unzip -q "$ZIP_FILE" -d extracted
 
-          echo "==== EXTRACTED FILES ===="
-          find extracted | head -100
+      ####################################################################
+      # FIND SRC DIRECTORY ROBUSTLY
+      ####################################################################
 
-      ########################################################
-      # FIND SRC DIRECTORY
-      ########################################################
-
-      - name: Find src directory
+      - name: Locate src directory
         run: |
           SRC_DIR=$(find extracted -type d -name src | head -n 1)
 
           if [ -z "$SRC_DIR" ]; then
             echo "ERROR: src directory not found!"
-            find extracted
+            echo "=== DIRECTORY TREE ==="
+            find extracted -maxdepth 4 -type d
             exit 1
           fi
 
           echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
 
-          echo "==== FOUND SRC ===="
+          echo "Found src:"
           echo "$SRC_DIR"
 
-      ########################################################
-      # DOWNLOAD SDL2
-      ########################################################
-
-      - name: Download SDL2
-        run: |
-          wget https://github.com/libsdl-org/SDL/releases/download/release-2.30.2/SDL2-2.30.2.tar.gz
-
-          tar -xzf SDL2-2.30.2.tar.gz
-
-      ########################################################
-      # BUILD SDL2
-      ########################################################
-
-      - name: Build SDL2
-        run: |
-          cd SDL2-2.30.2
-
-          mkdir build
-          cd build
-
-          CC=aarch64-linux-gnu-gcc \
-          CXX=aarch64-linux-gnu-g++ \
-          cmake .. \
-            -DCMAKE_SYSTEM_NAME=Linux \
-            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
-            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
-            -DSDL_STATIC=ON \
-            -DSDL_SHARED=OFF \
-            -DSDL_X11=OFF \
-            -DSDL_WAYLAND=OFF \
-            -DCMAKE_INSTALL_PREFIX=$HOME/sdl2-install
-
-          make
-          make install
-
-      ########################################################
-      # VERIFY SDL2
-      ########################################################
-
-      - name: Verify SDL2
-        run: |
-          echo "==== SDL2 FILES ===="
-          find $HOME/sdl2-install | head -50
-
-          echo "==== PKGCONFIG ===="
-          ls $HOME/sdl2-install/lib/pkgconfig || true
-
-      ########################################################
-      # EXPORT SDL2 ENV
-      ########################################################
-
-      - name: Export SDL2 environment
-        run: |
-          echo "PKG_CONFIG_PATH=$HOME/sdl2-install/lib/pkgconfig" >> $GITHUB_ENV
-          echo "SDL2_CONFIG=$HOME/sdl2-install/bin/sdl2-config" >> $GITHUB_ENV
-
-      ########################################################
+      ####################################################################
       # BUILD ENET
-      ########################################################
+      ####################################################################
 
       - name: Build ENet
         run: |
-          cd "$SRC_DIR/enet"
+          cd "$SRC_DIR"
 
-          echo "==== CLEAN ENET ===="
-          make clean || true
+          make -C enet clean || true
 
-          echo "==== BUILD ENET ===="
-
-          make \
+          make -C enet \
             CC=aarch64-linux-gnu-gcc \
-            AR=aarch64-linux-gnu-ar || true
+            AR=aarch64-linux-gnu-ar \
+            RANLIB=aarch64-linux-gnu-ranlib
 
-          echo "==== VERIFY ENET ===="
+      ####################################################################
+      # BUILD RED ECLIPSE
+      ####################################################################
 
-          if [ ! -f "libenet.a" ]; then
-            echo "ERROR: libenet.a missing!"
-            exit 1
-          fi
-
-          echo "ENET BUILD SUCCESSFUL"
-
-      ########################################################
-      # BUILD ENGINE
-      ########################################################
-
-      - name: Build Engine
+      - name: Build Red Eclipse ARM64
         run: |
           cd "$SRC_DIR"
 
-          export PKG_CONFIG_PATH=$HOME/sdl2-install/lib/pkgconfig
-          export SDL2_CONFIG=$HOME/sdl2-install/bin/sdl2-config
+          export CC=aarch64-linux-gnu-gcc
+          export CXX=aarch64-linux-gnu-g++
+          export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig
 
-          echo "==== PKG CONFIG ===="
-          pkg-config --list-all | grep SDL || true
-
-          echo "==== SDL2 VERSION ===="
-          $HOME/sdl2-install/bin/sdl2-config --version || true
-
-          echo "==== CLEAN ENGINE ===="
           make clean || true
 
-          echo "==== BUILD ENGINE ===="
-
-          make \
+          make -j$(nproc) \
             CC=aarch64-linux-gnu-gcc \
             CXX=aarch64-linux-gnu-g++ \
-            SDL2_CONFIG=$HOME/sdl2-install/bin/sdl2-config \
-            V=1 || true
+            CLIENT=1 \
+            SERVER=1
 
-      ########################################################
-      # SHOW GENERATED FILES
-      ########################################################
+      ####################################################################
+      # FIND GENERATED BINARIES
+      ####################################################################
 
-      - name: Show generated files
+      - name: Locate binaries
         run: |
-          echo "==== GENERATED FILES ===="
-          find extracted -type f | grep -E '\.(a|so|exe|apk)$' || true
+          echo "=== SEARCHING FOR BINARIES ==="
 
-      ########################################################
-      # VERIFY BUILD RESULT
-      ########################################################
+          find extracted -type f | grep -Ei \
+            "redeclipse|server|linux|arm|\.so$" || true
 
-      - name: Verify build result
-        run: |
-          BIN_COUNT=$(find extracted -type f | grep -E '\.(a|so|exe|apk)$' | wc -l)
-
-          echo "Generated binaries: $BIN_COUNT"
-
-          if [ "$BIN_COUNT" -eq 0 ]; then
-            echo "ERROR: No binaries generated!"
-            exit 1
-          fi
-
-      ########################################################
+      ####################################################################
       # UPLOAD ARTIFACTS
-      ########################################################
+      ####################################################################
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-              - name: Locate binaries
-        run: |
-          echo "=== BINARIES ==="
-          find extracted -type f | grep -Ei "redeclipse|server|linux|arm"
-
-      - name: Upload build
+      - name: Upload ARM64 build
         uses: actions/upload-artifact@v4
         with:
           name: redeclipse-xu10-arm64
           path: |
-            extracted/**/*.so
             extracted/**/redeclipse*
             extracted/**/server*
-        with:
-          name: build-output
-          path: |
-            extracted/**/bin/**
-            extracted/**/src/**/*.so
-            extracted/**/src/**/*.a
+            extracted/**/*.so
