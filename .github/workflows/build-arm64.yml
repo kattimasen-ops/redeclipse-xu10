@@ -1,4 +1,4 @@
-name: Android ARM64 Build
+name: R36S Build (ARMv7)
 
 on:
   workflow_dispatch:
@@ -8,258 +8,59 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-
-      ########################################################
-      # CHECKOUT
-      ########################################################
-
       - name: Checkout
         uses: actions/checkout@v4
 
-      ########################################################
-      # FIX UBUNTU MIRRORS
-      ########################################################
-
-      - name: Fix Ubuntu mirrors
-        run: |
-          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
-          sudo sed -i 's|http://security.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
-
-      ########################################################
-      # INSTALL DEPENDENCIES
-      ########################################################
-
-      - name: Install packages
+      - name: Install dependencies
         run: |
           sudo apt update
-
-          sudo apt install -y \
-            build-essential \
-            gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu \
-            make \
-            cmake \
-            git \
-            unzip \
-            zip \
-            wget \
-            autoconf \
-            automake \
-            libtool \
-            pkg-config \
-            libx11-dev \
-            libgl1-mesa-dev \
-            zlib1g-dev
-
-      ########################################################
-      # EXTRACT ZIP
-      ########################################################
+          sudo apt install -y build-essential gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf cmake git unzip zip wget
 
       - name: Extract source
         run: |
           mkdir -p extracted
+          unzip *.zip -d extracted
+          echo "SRC_DIR=$(find extracted -type d -name src | head -n 1)" >> $GITHUB_ENV
 
-          ZIPFILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
-
-          if [ -z "$ZIPFILE" ]; then
-            echo "ERROR: No ZIP file found!"
-            exit 1
-          fi
-
-          echo "==== USING ZIP ===="
-          echo "$ZIPFILE"
-
-          unzip "$ZIPFILE" -d extracted
-
-          echo "==== EXTRACTED FILES ===="
-          find extracted | head -100
-
-      ########################################################
-      # FIND SRC DIRECTORY
-      ########################################################
-
-      - name: Find src directory
-        run: |
-          SRC_DIR=$(find extracted -type d -name src | head -n 1)
-
-          if [ -z "$SRC_DIR" ]; then
-            echo "ERROR: src directory not found!"
-            find extracted
-            exit 1
-          fi
-
-          echo "SRC_DIR=$SRC_DIR" >> $GITHUB_ENV
-
-          echo "==== FOUND SRC ===="
-          echo "$SRC_DIR"
-
-      ########################################################
-      # DOWNLOAD SDL2
-      ########################################################
-
-      - name: Download SDL2
+      - name: Build SDL2 (32-bit)
         run: |
           wget https://github.com/libsdl-org/SDL/releases/download/release-2.30.2/SDL2-2.30.2.tar.gz
-
           tar -xzf SDL2-2.30.2.tar.gz
-
-      ########################################################
-      # BUILD SDL2
-      ########################################################
-
-      - name: Build SDL2
-        run: |
           cd SDL2-2.30.2
-
-          mkdir build
-          cd build
-
-          CC=aarch64-linux-gnu-gcc \
-          CXX=aarch64-linux-gnu-g++ \
+          mkdir build && cd build
           cmake .. \
             -DCMAKE_SYSTEM_NAME=Linux \
-            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
-            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
-            -DSDL_STATIC=ON \
-            -DSDL_SHARED=OFF \
-            -DSDL_X11=OFF \
-            -DSDL_WAYLAND=OFF \
+            -DCMAKE_SYSTEM_PROCESSOR=armv7l \
+            -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
+            -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ \
+            -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSDL_X11=OFF -DSDL_WAYLAND=OFF \
             -DCMAKE_INSTALL_PREFIX=$HOME/sdl2-install
-
-          make
+          make -j$(nproc)
           make install
 
-      ########################################################
-      # VERIFY SDL2
-      ########################################################
-
-      - name: Verify SDL2
-        run: |
-          echo "==== SDL2 FILES ===="
-          find $HOME/sdl2-install | head -50
-
-          echo "==== PKGCONFIG ===="
-          ls $HOME/sdl2-install/lib/pkgconfig || true
-
-      ########################################################
-      # EXPORT SDL2 ENV
-      ########################################################
-
-      - name: Export SDL2 environment
-        run: |
-          echo "PKG_CONFIG_PATH=$HOME/sdl2-install/lib/pkgconfig" >> $GITHUB_ENV
-          echo "SDL2_CONFIG=$HOME/sdl2-install/bin/sdl2-config" >> $GITHUB_ENV
-
-      ########################################################
-      # BUILD ENET
-      ########################################################
-
-      - name: Build ENet
-        run: |
-          cd "$SRC_DIR/enet"
-
-          echo "==== CLEAN ENET ===="
-          make clean || true
-
-          echo "==== BUILD ENET ===="
-
-          make \
-            CC=aarch64-linux-gnu-gcc \
-            AR=aarch64-linux-gnu-ar || true
-
-          echo "==== VERIFY ENET ===="
-
-          if [ ! -f "libenet.a" ]; then
-            echo "ERROR: libenet.a missing!"
-            exit 1
-          fi
-
-          echo "ENET BUILD SUCCESSFUL"
-
-      ########################################################
-      # BUILD ENGINE
-      ########################################################
-
-      - name: Build Engine
+      - name: Build Engine (32-bit)
         run: |
           cd "$SRC_DIR"
-
-          export PKG_CONFIG_PATH=$HOME/sdl2-install/lib/pkgconfig
-          export SDL2_CONFIG=$HOME/sdl2-install/bin/sdl2-config
-
-          echo "==== PKG CONFIG ===="
-          pkg-config --list-all | grep SDL || true
-
-          echo "==== SDL2 VERSION ===="
-          $HOME/sdl2-install/bin/sdl2-config --version || true
-
-          echo "==== CLEAN ENGINE ===="
-          make clean || true
-
-          echo "==== BUILD ENGINE ===="
-
+          # Wir setzen die Variablen direkt für den Make-Prozess
           make \
-            CC=aarch64-linux-gnu-gcc \
-            CXX=aarch64-linux-gnu-g++ \
+            CC=arm-linux-gnueabihf-gcc \
+            CXX=arm-linux-gnueabihf-g++ \
             SDL2_CONFIG=$HOME/sdl2-install/bin/sdl2-config \
-            V=1 || true
+            PLATFORM_LIBS="-L$HOME/sdl2-install/lib -lSDL2" \
+            PLATFORM_INCLUDES="-I$HOME/sdl2-install/include" \
+            V=1
 
-      ########################################################
-      # SHOW GENERATED FILES
-      ########################################################
-
-      - name: Show generated files
-        run: |
-          echo "==== GENERATED FILES ===="
-          find extracted -type f | grep -E '\.(a|so|exe|apk)$' || true
-
-      ########################################################
-      # VERIFY BUILD RESULT
-      ########################################################
-
-      - name: Verify build result
-        run: |
-          BIN_COUNT=$(find extracted -type f | grep -E '\.(a|so|exe|apk)$' | wc -l)
-
-          echo "Generated binaries: $BIN_COUNT"
-
-          if [ "$BIN_COUNT" -eq 0 ]; then
-            echo "ERROR: No binaries generated!"
-            exit 1
-          fi
-
-      ########################################################
-      # UPLOAD ARTIFACTS
-      ########################################################
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-output
-          path: |
-            extracted/**/bin/**
-            extracted/**/src/**/*.so
-            extracted/**/src/**/*.a
-
-      ########################################################
-      # EXTRA: FIND AND ISOLATE REDECLIPSE BINARY
-      ########################################################
-
-      - name: Isolate Red Eclipse ARM64 Binary
+      - name: Isolate Binary
         run: |
           mkdir -p final-binary
-          echo "==== SEARCHING FOR EXECUTABLES ===="
-          find extracted -type f -executable -name "re_*" -exec cp {} final-binary/ \; || true
-          find extracted -type f -executable -name "redeclipse_*" -exec cp {} final-binary/ \; || true
-          echo "==== FOUND BINARIES ===="
-          ls -la final-binary
+          # Suche nach der Engine-Binary (oft im src-Ordner oder root)
+          find "$SRC_DIR" -maxdepth 2 -type f -executable -name "redeclipse_*" -exec cp {} final-binary/ \;
+          
+          echo "==== Architektur-Prüfung ===="
+          file final-binary/* || true
 
-      ########################################################
-      # EXTRA: UPLOAD REDECLIPSE BINARY ONLY
-      ########################################################
-
-      - name: Upload Red Eclipse ARM64 Only
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: redeclipse-linux-arm64
+          name: redeclipse-r36s-armv7
           path: final-binary/
